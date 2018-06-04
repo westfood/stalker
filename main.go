@@ -3,40 +3,54 @@ package main
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/olekukonko/tablewriter"
+	"net"
 	"os"
+	"strings"
 )
 
 func main() {
 
-	table()
+	handleCommand()
 
 }
 
-func table() {
+func handleCommand() {
 
-	data := [][]string{
-		[]string{"Alfréd", "15", "10/20", "(10.32, 56.21, 30.25)"},
-		[]string{"Belzezub", "30", "30/50", "(1,1,1)"},
-		[]string{"Hortenz", "21", "80/80", "(1,1,1)"},
-		[]string{"Pokey", "8", "30/40", "(1,1,1)"},
+	args := (os.Args[1:])
+	size := len(args)
+
+	switch size {
+
+	case 0:
+
+		fmt.Println("Nothing is sub optimal amount of arguments, gimme some please.")
+		printHelp()
+
+	case 1:
+
+		addr := net.ParseIP(strings.Join(args, ""))
+		if addr == nil {
+			describeInstance(strings.Join(args, ""), "private-dns-name")
+		} else {
+			describeInstance(addr.String(), "private-ip-address")
+		}
+
+	default:
+
+		fmt.Println("Command supports only one argument.")
+		printHelp()
+
 	}
-
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"NPC", "Rychlost", "Síla", "Místo"})
-	table.AppendBulk(data)
-	table.Render()
 }
 
-func printArgs() {
-
-	args := os.Args[1:]
-	fmt.Println(args)
+func printHelp() {
+	fmt.Println("Return public hostname of AWS instance from private IP or hostname. Example: stalker 172.1.24.45")
 }
 
-func describeInstance() {
+func describeInstance(ip, filter string) {
 
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
@@ -45,17 +59,48 @@ func describeInstance() {
 	params := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
 			{
-				Name:   aws.String("private-ip-address"),
-				Values: []*string{aws.String("172.31.3.8")},
+				Name:   aws.String(filter),
+				Values: []*string{aws.String(ip)},
 			},
 		},
 	}
+
 	result, err := ec2svc.DescribeInstances(params)
 	if err != nil {
-		fmt.Println("Error", err)
-	} else {
-		fmt.Println(result)
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			default:
+				fmt.Println(aerr.Error())
+			}
+		} else {
+			// Print the error, cast err to awserr.Error to get the Code and
+			// Message from an error.
+			fmt.Println(err.Error())
+		}
+		return
 	}
-	fmt.Println(params)
 
+	for _, reservation := range result.Reservations {
+		for _, instance := range reservation.Instances {
+			for _, network := range instance.NetworkInterfaces {
+				fmt.Println(*network.Association.PublicDnsName)
+			}
+		}
+	}
+
+	// if err != nil {
+	// 	if awsErr, ok := err.(awserr.Error); ok {
+	// 		fmt.Println("Error", awsErr)
+	// 	} else {
+	// 		fmt.Println("Error", err)
+	// 	}
+	// } else {
+	// 	for _, reservation := range result.Reservations {
+	// 		for _, instance := range reservation.Instances {
+	// 			for _, network := range instance.NetworkInterfaces {
+	// 				fmt.Println(*network.Association.PublicDnsName)
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
