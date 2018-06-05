@@ -32,8 +32,16 @@ func handleCommand() {
 	case 1:
 
 		addr := net.ParseIP(strings.Join(args, ""))
+
 		if addr == nil {
-			describeInstance(strings.Join(args, ""), "private-dns-name")
+
+			hostname := strings.Join(args, "")
+
+			if strings.Contains(hostname, "compute.internal") {
+				describeInstance(hostname, "private-dns-name")
+			} else if strings.Contains(hostname, "i-") {
+				describeInstance(hostname, "instance-id")
+			}
 		} else {
 			describeInstance(addr.String(), "private-ip-address")
 		}
@@ -47,7 +55,7 @@ func handleCommand() {
 }
 
 func printHelp() {
-	fmt.Println("Return public hostname of AWS instance from private IP or hostname. Example: stalker 172.1.24.45")
+	fmt.Println("Return public hostname of AWS instance from instance id, private IP or hostname. Example: stalker 172.1.24.45")
 }
 
 func describeInstance(ip, filter string) {
